@@ -54,10 +54,6 @@ rawData/
 raw_data/
 data/
 ref/
-midstream/
 Rplots.pdf
 *.dat
 CPSMT.Rproj
-
-midstream/*
-!midstream/seedInd.csv
