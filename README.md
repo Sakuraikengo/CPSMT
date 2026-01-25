@@ -1,7 +1,7 @@
 # CPS-MT
 ## Code Overview
 
-This repository contains the R scripts used to develop and evaluate a new breeding strategy, **CPS-MT (Cross Potential Selection for Multiple Traits)**, using breeding simulations. The title of this paper is **Cross Potential Selection for Multiple Traits Considering the Progeny Distribution of Future Inbred Lines in Plant Breeding Programs** The workflow consists of (i) setting up simulation populations and genetic architectures, (ii) running recurrent breeding simulations under CPS-MT and a baseline strategy, and (iii) comparing their performance.
+This repository contains the R scripts used to develop and evaluate a new breeding strategy, **CPS-MT (Cross Potential Selection for Multiple Traits)**, using breeding simulations. The title of this paper is **Cross Potential Selection for Multiple Traits Considering the Progeny Distribution of Future Inbred Lines in Plant Breeding Programs**. The workflow consists of (i) setting up simulation populations and genetic architectures, (ii) running recurrent breeding simulations under CPS-MT and a baseline strategy, and (iii) comparing their performance.
 
 ---
 
