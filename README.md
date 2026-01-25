@@ -22,6 +22,9 @@ Main tasks include:
 - Simulating true genetic values and phenotypes under specified heritability and genetic correlation/causality scenarios
 - Saving population objects, maps, marker effects, and phenotypic data for downstream analyses
 
+**Note:**  
+The directory `midstream/2.0.simulationSetting/` contains preprocessed genome data for the simulations. These files are reused by downstream scripts to ensure consistency across simulation replicates and breeding strategies.
+
 ---
 
 ### `3.0.CPSMT.R`
