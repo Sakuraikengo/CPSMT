@@ -381,14 +381,6 @@ plotMap <- function (x, col = "green", map2, chr, horizontal = FALSE, shift = TR
   invisible()
 }
 
-# get the name of QTN markers
-GetNameQTN <- function(markerEffectTrueMat) {
-  qtn1 <- rownames(markerEffectTrueMat)[markerEffectTrueMat[, 1] != 0]
-  qtn2 <- rownames(markerEffectTrueMat)[markerEffectTrueMat[, 2] != 0]
-  qtn <- unique(c(qtn1, qtn2))
-  return(qtn)
-}
-
 GP <- function(phenoMat, genoMat) {
   amat <- calcGRM(genoMat = genoMat, methodGRM = "A.mat")
   Z <- design.Z(pheno.labels = rownames(phenoMat), geno.names = rownames(amat))
@@ -474,7 +466,7 @@ CalcD2 <- function(ObjectMap, markerEffectMat, nTrait, k) {
 }
 
 # Calculating the progeny variance for each cross
-CalcVarMat2 <- function(D2, combInd, gametArray, nTrait) {
+CalcVarMat <- function(D2, combInd, gametArray, nTrait) {
   sigmaMat <- sapply(D2, function(D2Each) {
     # D2Each <- D2[[1]]
     sigmaMatEachChr <- sapply(D2Each, function(D2EachChr) {
@@ -551,162 +543,6 @@ ExtractGamet <- function(nowPop, indName, qtn) {
   return(gametArray)
 }
 
-
-CalcMaxT1 <- function(sigma, #c(variance of t1, t2, covariance of t1 and t2)
-                      sigmaU,
-                      sigmaV,
-                      mu,
-                      probCross) {
-  
-  # the size of ellipse
-  L <- sqrt((-2)*log(1-probCross))
-  # the degree of ellipse
-  theta <- atan((sigmaU - sigma[1]) / sigma[3])
-  if (sigmaU - sigma[1] == 0) {
-    theta <- 0
-  }
-  
-  # the length for long/short axis for ellipse
-  a <- L * sqrt(sigmaU)
-  b <- L * sqrt(sigmaV)
-  
-  # calculating the max t1 value
-  A <- (a^2 * sin(theta)^2 + b^2 * cos(theta)^2) / ((a^2)*(b^2))
-  B <- -2*sin(theta)*cos(theta)*(a^2 - b^2) / ((a^2)*(b^2))
-  C <- (a^2 * cos(theta)^2 + b^2 * sin(theta)^2) / ((a^2)*(b^2))
-  
-  # tangent point (max u_1 value)
-  x_max_tmp <- sqrt(4*C / (4*A*C - B^2))
-  y_max_tmp <- -B * x_max_tmp / (2*C)
-  
-  x_min_tmp <- -x_max_tmp
-  y_min_tmp <- -y_max_tmp
-  
-  x_max <- x_max_tmp + mu[1]
-  y_max <- y_max_tmp + mu[2]
-  x_min <- x_min_tmp + mu[1]
-  y_min <- y_min_tmp + mu[2]
-  return(list(A = A,
-              B = B,
-              C = C,
-              x_max = x_max,
-              y_max = y_max,
-              x_min = x_min,
-              y_min = y_min))
-}
-
-
-
-
-
-
-
-EvalCross <- function(combEach,
-                       sigmaMat, #c(variance of t1, t2, covariance of t1 and t2)
-                       predProgMean,
-                       probCross,
-                       lambda,
-                       h,
-                       l) {
-  
-  # The center of the desirabel range
-  center <- (h + l) / 2
-  
-  sigma <- sigmaMat[combEach, ]
-  mu <- predProgMean[combEach, ]
-  
-  # Eigenvalue decomposition
-  # if sigmaU == 0, CalcMaxT1 can't run. Add very small variance (which don't have effect)
-  temp <- (sigma[1] - sigma[2])^2 + 4*(sigma[3])^2
-  sigmaU <- (sigma[1] + sigma[2] + sqrt(temp)) / 2
-  sigmaV <- (sigma[1] + sigma[2] - sqrt(temp)) / 2
-  if (sigmaV < 1e-5) {
-    sigmaV <- sigmaV + 1e-10
-  }
-  
-  if (abs(sigmaU) < 1e-10) {
-    # Case1: genotypic values of the progenies are the same that of parents
-    x_g <- mu[1]
-    y_g <- mu[2]
-    f <- x_g - lambda * abs(y_g - center)
-  } else {
-    # Case2: genotypic values of the progenies are different from that of parents
-    maxValList <- CalcMaxT1(sigma = sigma,
-                            sigmaU = sigmaU,
-                            sigmaV = sigmaV,
-                            mu = mu,
-                            probCross = probCross)
-    
-    A <- maxValList$A
-    B <- maxValList$B
-    C <- maxValList$C
-    x_max <- maxValList$x_max
-    y_max <- maxValList$y_max
-    x_min <- maxValList$x_min
-    y_min <- maxValList$y_min
-    
-    # calculating the crossing point between center (u_2 = 0) and elipse
-    # ellipse: A(u_1 - \mu_1)^2 + B(u_1 - \mu_1)(u_2 - \mu_2) + C(u_2 - \mu_2)^2
-    # u_2 = 0
-    # Au_1^2 - (2\mu_1 + B\mu_2)u_1 + (A\mu_1^2 + B\mu_1\mu_2 + C\mu_2^2 - 1) = 0
-    M <- -(2*A*mu[1] + B*mu[2])
-    L <- (A*mu[1]^2 + B*mu[1]*mu[2] + C*mu[2]^2 - 1)
-    ellipseD <- M^2 - 4*A*L
-    if (ellipseD >= 0) {
-      g_center <- (-M + sqrt(ellipseD)) / (2*A)
-    } else {
-      g_center <- -1e30
-    }
-    
-    # the rank of variance is only 1
-    if (sigmaV < 1e-5) {
-      # calculating the g value of the end point
-      distance_max <- abs(y_max - center)
-      g_max <- x_max - lambda*distance_max
-      
-      # calculating the g value of the other end point
-      distance_min <- abs(y_min - center)
-      g_min <- x_min - lambda*distance_min
-      
-      # compare the g values
-      CPSMT <- max(c(g_center, g_max, g_min))
-    } else {
-      # normal case (the rank of variance is 2)
-      # u_2 > 0
-      # calculating the tangent point
-      g_tmp <- 2*sqrt((C + A*lambda^2 + B*lambda) / (4*A*C - B^2))
-      y_tmp <- -(2*lambda*g_tmp*A + B*g_tmp) / (2*(C + A*lambda^2 + B*lambda))
-      x_tmp <- g_tmp + lambda*y_tmp
-      
-      # moving the center of ellipse
-      y_g <- y_tmp + mu[2]
-      x_g <- x_tmp + mu[1]
-      if (y_g >= 0) {
-        g_1 <- x_g - lambda*abs(y_g - center)
-      } else {
-        g_1 <- -1e30
-      }
-      
-      # u_2 < 0
-      # calculating the tangent point
-      g_tmp <- 2*sqrt((C + A*lambda^2 - B*lambda) / (4*A*C - B^2))
-      y_tmp <- -(-2*lambda*g_tmp*A + B*g_tmp) / (2*(C + A*lambda^2 - B*lambda))
-      x_tmp <- g_tmp - lambda*y_tmp
-      
-      # moving the center of ellipse
-      y_g <- y_tmp + mu[2]
-      x_g <- x_tmp + mu[1]
-      if (y_g <= 0) {
-        g_2 <- x_g - lambda*abs(y_g - center)
-      } else {
-        g_2 <- -1e30
-      }
-      
-      CPSMT <- max(g_center, g_1, g_2)
-    }
-  }
-  return(CPSMT)
-}
 
 # Extracting the best crosses using Linear Programing(LP)
 LP <- function(predProgMat, # the potential of each cross
@@ -843,122 +679,6 @@ LP <- function(predProgMat, # the potential of each cross
   }
 }
 
-SelectForSelfing <- function(predU,
-                              D2Self, 
-                              gametArray,
-                              nTrait,
-                              nSelf,
-                              probSelf,
-                              h,
-                              l) {
-  # selfMat <- rbind(rownames(predU), rownames(predU))
-  selfInd <- matrix(rep(1:nrow(predU), 2), nrow = 2, byrow = T)
-  varSelfMat <- CalcVarMat2(D2 = D2Self,
-                            combInd = selfInd,
-                            gametArray = gametArray,
-                            nTrait = nTrait)
-  
-  selfPotential <- sapply(1:nrow(varSelfMat), function(selfEachInd) {
-    # selfEachInd <- 8
-    sigma <- varSelfMat[selfEachInd, ]
-    mu <- predU[selfEachInd, ]
-    center <- (h + l) / 2
-    
-    # Eigenvalue decomposition
-    # if sigmaU == 0, CalcMaxT1 can't run. Add very small variance (which don't have effect)
-    temp <- (sigma[1] - sigma[2])^2 + 4*(sigma[3])^2
-    sigmaU <- (sigma[1] + sigma[2] + sqrt(temp)) / 2
-    sigmaV <- (sigma[1] + sigma[2] - sqrt(temp)) / 2 + 1e-10
-    
-    if (abs(sigmaU) < 1e-10) {
-      # Case1: genotypic values of the progenies are the same that of parents
-      x_g <- mu[1]
-      y_g <- mu[2]
-      f <- x_g - lambda * abs(y_g - center)
-    } else {
-      # Case2: genotypic values of the progenies are different from that of parents
-      maxValList <- CalcMaxT1(sigma = sigma,
-                              sigmaU = sigmaU,
-                              sigmaV = sigmaV,
-                              mu = mu,
-                              probCross = probSelf)
-      A <- maxValList$A
-      B <- maxValList$B
-      C <- maxValList$C
-      x_max <- maxValList$x_max
-      y_max <- maxValList$y_max
-      x_min <- maxValList$x_min
-      y_min <- maxValList$y_min
-      
-      # calculating the crossing point between center (u_2 = 0) and elipse
-      # ellipse: A(u_1 - \mu_1)^2 + B(u_1 - \mu_1)(u_2 - \mu_2) + C(u_2 - \mu_2)^2
-      # u_2 = 0
-      # Au_1^2 - (2\mu_1 + B\mu_2)u_1 + (A\mu_1^2 + B\mu_1\mu_2 + C\mu_2^2 - 1) = 0
-      M <- -(2*A*mu[1] + B*mu[2])
-      L <- (A*mu[1]^2 + B*mu[1]*mu[2] + C*mu[2]^2 - 1)
-      ellipseD <- M^2 - 4*A*L
-      if (ellipseD >= 0) {
-        g_center <- (-M + sqrt(ellipseD)) / (2*A)
-      } else {
-        g_center <- -1e30
-      }
-      
-      # the rank of variance is only 1
-      if (sigmaV < 1e-5) {
-        
-        # calculating the g value of the end point
-        distance_max <- abs(y_max - center)
-        g_max <- x_max - lambda*distance_max
-        
-        # calculating the g value of the other end point
-        distance_min <- abs(y_min - center)
-        g_min <- x_min - lambda*distance_min
-        
-        # compare the g values
-        f <- max(c(g_center, g_max, g_min))
-      } else {
-        # normal case (the rank of variance is 2)
-        # calculating the max t1 value in the desired area
-        # u_2 > 0
-        # calculating the tangent point
-        g_tmp <- 2*sqrt((C + A*lambda^2 + B*lambda) / (4*A*C - B^2))
-        y_tmp <- -(2*lambda*g_tmp*A + B*g_tmp) / (2*(C + A*lambda^2 + B*lambda))
-        x_tmp <- g_tmp + lambda*y_tmp
-        
-        # moving the center of ellipse
-        y_g <- y_tmp + mu[2]
-        x_g <- x_tmp + mu[1]
-        if (y_g >= 0) {
-          g_1 <- x_g - lambda*abs(y_g - center)
-        } else {
-          g_1 <- -1e30
-        }
-        
-        # u_2 < 0
-        # calculating the tangent point
-        g_tmp <- 2*sqrt((C + A*lambda^2 - B*lambda) / (4*A*C - B^2))
-        y_tmp <- -(-2*lambda*g_tmp*A + B*g_tmp) / (2*(C + A*lambda^2 - B*lambda))
-        x_tmp <- g_tmp - lambda*y_tmp
-        
-        # moving the center of ellipse
-        y_g <- y_tmp + mu[2]
-        x_g <- x_tmp + mu[1]
-        if (y_g <= 0) {
-          g_2 <- x_g - lambda*abs(y_g - center)
-        } else {
-          g_2 <- -1e30
-        }
-        
-        f <- max(g_center, g_1, g_2)
-      }
-    }
-    return(f)
-  })
-  selectedInd <- order(selfPotential, decreasing = T)[1:nSelf]
-  selectedName <- rownames(predU)[selectedInd]
-  return(selectedName)
-}
-
 CreateF8 <- function(selfSelected, nowPop, nProgSelf, markerEffectEstimated, markerEffectTrue, marker, beta, sigmaE, nPheno, nTrait, coeff, generation) {
   
   f8GenerationInd <- str_split(selfSelected[1], pattern = "N")[[1]][1]
@@ -1043,15 +763,20 @@ FigPredU <- function(gpPath, trueU, predU) {
 }
 
 # draw a figure of true genotypic values
-FigTrueU <- function(plotPath, trueU, h, l) {
+FigTrueU <- function(plotPath, trueU, h, l, generation) {
   png(plotPath)
-  plot(trueU, 
-       xlab = "Trait1", ylab = "Trait2", 
-       xlim = c(-5, 40), ylim = c(-15, 15), 
-       main = paste0("Genetic Value of Generation ", generation))
+  plot(
+    trueU,
+    xlab = "Trait1",
+    ylab = "Trait2",
+    xlim = c(-5, 40),
+    ylim = c(-15, 15),
+    main = paste0("Genetic Value of Generation ", generation)
+  )
   abline(h = c(h, l), lty = 2, col = "red")
   dev.off()
 }
+
 
 # draw a figure of marker effects prediction accuracy
 FigPredMarker <- function(markerPredictPath, 
@@ -1124,132 +849,17 @@ FigPredGenVar <- function(plotPathVar1,
   dev.off()
 }
 
-SimSumLambda <- function(pathList, target, baseFileName, index, generationInd, typeFactor, corFactor, lambdaList, lambdaColor) {
-  resDfList <- lapply(pathList, function(pathListEach) {
-    # pathListEach <- pathList[[1]]
-    method <- pathListEach$method
-    resList <- lapply(pathListEach$path, function(path) {
-      # path <- pathListEach$path[[8]]
-      lambdaEach <- str_split(path, pattern = "/")[[1]][3]
-      typeFactorEach <- str_split(path, pattern = "/")[[1]][4]
-      corFactorEach <- str_split(path, pattern = "/")[[1]][5]
-      # sort the file based on file name
-      fileName <- list.files(path, pattern = baseFileName)
-      fileNum <- as.numeric(str_sub(fileName, start = 1, end = -nchar(fileName[1])))
-      fileOrder <- order(fileNum)
-      
-      # gathering the results files of "F4" and "Recurrent genomic selection"
-      resList <- list.files(path, pattern = baseFileName, full.names = T)[fileOrder]
-      resArray <- array(data = NA, dim = c(length(generationInd), length(index), nRep))
-      dimnames(resArray) <- list(generationInd,
-                                 index,
-                                 1:nRep)
-      
-      for (i in 1:nRep) {
-        # i <- 24
-        resMat0 <- as.matrix(read.csv(resList[[i]], row.names = 1))
-        for (l in 1:length(index)) {
-          # l <- 1
-          traitName <- index[l]
-          if (traitName == "effectiveTop") {
-            resArray[, traitName, i] <- (resMat0[, traitName] - resMat0[1, traitName]) / sqrt(resMat0[1, "geneticVar1"])
-          } else if (traitName == "gainSum") {
-            resArray[, traitName, i] <- sum(resArray[, "effectiveTop", i])
-          } else if (traitName != "nFail") {
-            resArray[, traitName, i] <- resMat0[, traitName]
-          }
-        }
-      }
-      nFail <- sum(apply(resArray[, "effectiveTop", ], 2, sum) < 0)
-      resArray[resArray < -1e6] <- NA
-      
-      resMeanMat <- apply(resArray, c(1, 2), mean, na.rm = T)
-      resMeanMat[, "nFail"] <- nFail
-      resSeMat <- apply(resArray, c(1, 2), std.error, na.rm = T)
-      
-      generation <- as.numeric(str_sub(rownames(resMeanMat), start = 2))
-      generationRep <- rep(generation, ncol(resMeanMat))
-      methodRep <- rep(method, length(generationRep))
-      indexRep <- rep(colnames(resMeanMat), each = nrow(resMeanMat))
-      typeFactorRep <- rep(typeFactorEach, ncol(resMeanMat))
-      corFactorRep <- rep(corFactorEach, ncol(resMeanMat))
-      lambdaRep <- rep(lambdaEach, , ncol(resMeanMat))
-      dfEach <- data.frame(Generation = generationRep,
-                           Method = methodRep,
-                           Index = indexRep,
-                           Type = typeFactorRep,
-                           Factor = corFactorRep,
-                           Lambda = lambdaRep, 
-                           Value = c(resMeanMat),
-                           SE = c(resSeMat))
-      return(dfEach)
-    })
-    resDfListEach <- do.call(rbind, resList)
-    return(resDfListEach)
-  })
-  resDf <- do.call(rbind, resDfList)
-  for (i in 1:length(index)) {
-    # i <- 2
-    resIndEach0 <- index[i]
-    resDfEach <- resDf[resDf$Index == resIndEach0, ]
-    
-    if (any(resIndEach0 == "nFail", resIndEach0 == "gainSum")) {
-      next
-    }
-    
-    for (l in 1:length(typeFactor)) {
-      # l <- 1
-      typeIndEach0 <- typeFactor[l]
-      corIndEach0 <- corFactor[l]
-      
-      resDfSel <- resDfEach[resDfEach$Type == typeIndEach0, ]
-      resDfLambda <- resDfSel[resDfSel$Factor == corIndEach0, ]
-      
-      
-      resDfLambda$Method <- factor(resDfLambda$Method, levels = methodFactor)
-      resDfLambda$Factor <- factor(resDfLambda$Factor, levels = unique(corFactor))
-      resDfLambda$Lambda <- factor(resDfLambda$Lambda, levels = lambdaList)
-      
-      col <- lambdaColor
-      
-      g <- ggplot(resDfLambda, aes(x = Generation, y = Value, color = Lambda)) +
-        geom_line() +
-        facet_wrap(vars(Method)) +
-        scale_color_manual(values = col)
-      
-      png(paste0(dirSave, target, "_", resIndEach0, "_", typeIndEach0, "_", corIndEach0, ".png"),
-          width = 720, height = 720, res = 214)
-      print(g)
-      dev.off()
-      
-    }
-  }
-  pattern <- paste0(typeFactor, "_", corFactor)
-  nFailMat <- matrix(NA, nrow = length(lambdaList), ncol = length(pattern))
-  gainMat <- matrix(NA, nrow = length(lambdaList), ncol = length(pattern))
-  rownames(nFailMat) <- rownames(gainMat) <- paste0("w_", lambdaList)
-  colnames(nFailMat) <- colnames(gainMat) <- pattern
-  
-  resDfGain <- resDf[resDf$Index == "gainSum", ]
-  resDfFail <- resDf[(resDf$Index == "nFail") & (resDf$Generation == 0), ]
-  
-  for (lambda in lambdaList) {
-    # lambda <- lambdaList[1]
-    dfGainW <- resDfGain[resDfGain$Lambda == lambda, ]
-    patternInd <- paste0(dfGainW$Type, "_", dfGainW$Factor)
-    gain <- tapply(dfGainW[, "Value"], INDEX = patternInd, mean, na.rm = T)
-    gainMat[paste0("w_", lambda), names(gain)] <- gain
-    
-    resDfFailW <- resDfFail[resDfFail$Lambda == lambda, ]
-    patternInd <- paste0(resDfFailW$Type, "_", resDfFailW$Factor)
-    nFail <- tapply(resDfFailW[, "Value"], INDEX = patternInd, mean)
-    nFailMat[paste0("w_", lambda), names(nFail)] <- nFail
-  }
-  write.csv(gainMat, paste0(dirSave, "totalGain.csv"))
-  write.csv(nFailMat, paste0(dirSave, "numFail.csv"))
-}
-
-SimSum <- function(pathList, target, baseFileName, index, generationInd, methodFactor,  typeFactor, corFactor, corColor) {
+SimSum <- function(
+  pathList,
+  target,
+  baseFileName,
+  index,
+  generationInd,
+  methodFactor,
+  typeFactor,
+  corFactor,
+  corColor
+) {
   resDfList <- lapply(pathList, function(pathListEach) {
     # pathListEach <- pathList[[1]]
     method <- pathListEach$method
@@ -1260,50 +870,61 @@ SimSum <- function(pathList, target, baseFileName, index, generationInd, methodF
       corFactorEach <- str_split(path, pattern = "/")[[1]][nameInd - 1]
       # sort the file based on file name
       fileName <- list.files(path, pattern = baseFileName)
-      fileNum <- as.numeric(str_sub(fileName, start = 1, end = -nchar(fileName[1])))
+      fileNum <- as.numeric(str_sub(
+        fileName,
+        start = 1,
+        end = -nchar(fileName[1])
+      ))
       fileOrder <- order(fileNum)
-      
+
       # gathering the results files of "F4" and "Recurrent genomic selection"
-      resList <- list.files(path, pattern = baseFileName, full.names = T)[fileOrder]
-      resArray <- array(data = NA, dim = c(length(generationInd), length(index), nRep))
-      dimnames(resArray) <- list(generationInd,
-                                 index,
-                                 1:nRep)
-      
+      resList <- list.files(path, pattern = baseFileName, full.names = T)[
+        fileOrder
+      ]
+      resArray <- array(
+        data = NA,
+        dim = c(length(generationInd), length(index), nRep)
+      )
+      dimnames(resArray) <- list(generationInd, index, 1:nRep)
+
       for (i in 1:nRep) {
         # i <- 1
         resMat0 <- as.matrix(read.csv(resList[[i]], row.names = 1))
         resMat0 <- resMat0[1:dim(resArray)[1], index, drop = F]
         # resMat0[, c("top", "top10Mean", "effectiveTop", "effectiveTop10Mean")] <- resMat0[, c("top", "top10Mean", "effectiveTop", "effectiveTop10Mean")] + 10
-        
+
         for (l in 1:length(index)) {
           traitName <- index[l]
           if (traitName == "effectiveTop") {
-            resArray[, traitName, i] <- (resMat0[, traitName] - resMat0[1, traitName]) / sqrt(resMat0[1, "geneticVar1"])
+            resArray[, traitName, i] <- (resMat0[, traitName] -
+              resMat0[1, traitName]) /
+              sqrt(resMat0[1, "geneticVar1"])
           } else if (traitName == "nFixedAllele") {
             resArray[, traitName, i] <- 4000 - resMat0[, traitName]
           } else {
             resArray[, traitName, i] <- resMat0[, traitName]
           }
-        } 
+        }
       }
-      
+
       resMeanMat <- apply(resArray, c(1, 2), mean, na.rm = T)
       resSeMat <- apply(resArray, c(1, 2), std.error, na.rm = T)
-      
+
       generation <- as.numeric(str_sub(rownames(resMeanMat), start = 2))
       generationRep <- rep(generation, ncol(resMeanMat))
       methodRep <- rep(method, length(generationRep))
       indexRep <- rep(colnames(resMeanMat), each = nrow(resMeanMat))
       typeFactorRep <- rep(typeFactorEach, ncol(resMeanMat))
       corFactorRep <- rep(corFactorEach, ncol(resMeanMat))
-      dfEach <- data.frame(Generation = generationRep,
-                           Method = methodRep,
-                           Index = indexRep,
-                           Type = typeFactorRep,
-                           Factor = corFactorRep,
-                           Value = c(resMeanMat),
-                           SE = c(resSeMat))
+      dfEach <- data.frame(
+        Generation = generationRep,
+        Method = methodRep,
+        Index = indexRep,
+        Type = typeFactorRep,
+        Factor = corFactorRep,
+        Value = c(resMeanMat),
+        SE = c(resSeMat)
+      )
       return(dfEach)
     })
     resDfListEach <- do.call(rbind, resList)
@@ -1319,33 +940,57 @@ SimSum <- function(pathList, target, baseFileName, index, generationInd, methodF
     resDfEach$Method <- factor(resDfEach$Method, levels = methodFactor)
     resDfEach$Factor <- factor(resDfEach$Factor, levels = unique(corFactor))
     col <- corColor
-    
+
     if (grepl("^accuracy.{3}", resIndEach0)) {
       res0 <- resDfEach[resDfEach$Generation == 0, "Value"]
       res20 <- resDfEach[resDfEach$Generation == 20, "Value"]
       improve <- res20 / res0
-      cat(paste0("CPSMT Improvement Rate of ", resIndEach0, " of 3 Scenarios = ", mean(improve), " \n"))
+      cat(paste0(
+        "CPSMT Improvement Rate of ",
+        resIndEach0,
+        " of 3 Scenarios = ",
+        mean(improve),
+        " \n"
+      ))
     }
-    
+
     if (grepl("^rmse.*", resIndEach0)) {
       res1 <- resDfEach[resDfEach$Generation == 1, "Value"]
       res20 <- resDfEach[resDfEach$Generation == 20, "Value"]
-      pr <- (res1 - res20) / res1 *100
-      cat(paste0("CPSMT Reduction Rate of ", resIndEach0, " of 3 Scenarios = ", mean(pr), " %\n"))
+      pr <- (res1 - res20) / res1 * 100
+      cat(paste0(
+        "CPSMT Reduction Rate of ",
+        resIndEach0,
+        " of 3 Scenarios = ",
+        mean(pr),
+        " %\n"
+      ))
     }
-    
+
     if (grepl("^corMarker.*", resIndEach0)) {
       res1 <- resDfEach[resDfEach$Generation == 1, "Value"]
       res20 <- resDfEach[resDfEach$Generation == 20, "Value"]
       improve <- res20 / res1
-      cat(paste0("CPSMT Improvement Rate of ", resIndEach0, " of 3 Scenarios = ", mean(improve), " \n"))
+      cat(paste0(
+        "CPSMT Improvement Rate of ",
+        resIndEach0,
+        " of 3 Scenarios = ",
+        mean(improve),
+        " \n"
+      ))
     }
-    
-    
-    
-    ylim <- range(resDfEach$Value)
-    ylim[2] <- ylim[2] + ylim[2] * 0.1
-    
+
+    finiteIdx <- is.finite(resDfEach$Value) & is.finite(resDfEach$SE)
+    ylim <- range(
+      c(
+        resDfEach$Value[finiteIdx] - resDfEach$SE[finiteIdx],
+        resDfEach$Value[finiteIdx] + resDfEach$SE[finiteIdx]
+      )
+    )
+    margin <- abs(ylim[2] - ylim[1]) * 0.05
+    ylim[1] <- ylim[1] - margin
+    ylim[2] <- ylim[2] + margin
+
     for (l in 1:length(unique(typeFactor))) {
       # l <- 3
       typeEach <- unique(typeFactor)[l]
@@ -1353,71 +998,197 @@ SimSum <- function(pathList, target, baseFileName, index, generationInd, methodF
       g <- ggplot(resDfSel, aes(x = Generation, y = Value, color = Method)) +
         geom_line(size = 1.5) +
         facet_grid(Type ~ Factor) +
-        scale_color_manual(values = col) + 
-        geom_errorbar(aes(ymin = Value - SE, ymax = Value + SE),
-                      width = .3) + 
-        ylim(ylim) + 
-        theme(axis.text.x = element_blank(), 
-              axis.title.x = element_blank(), 
-              axis.text.y = element_text(size = 20), 
-              axis.title.y = element_blank(), 
-              legend.title = element_blank(), 
-              legend.frame = element_blank())
-      
+        scale_color_manual(values = col) +
+        geom_errorbar(aes(ymin = Value - SE, ymax = Value + SE), width = .3) +
+        ylim(ylim) +
+        theme(
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank(),
+          axis.text.y = element_text(size = 20),
+          axis.title.y = element_blank(),
+          legend.title = element_blank(),
+          legend.frame = element_blank()
+        )
+
       if (length(unique(resDfEach$Factor)) > 2) {
-        png(paste0(dirSave, target, "_", resIndEach0, "_", typeEach, ".png"),
-            height = 720, width = 2880, res = 214)
+        png(
+          paste0(dirSave, target, "_", resIndEach0, "_", typeEach, ".png"),
+          height = 720,
+          width = 2880,
+          res = 214
+        )
       } else {
-        png(paste0(dirSave, target, "_", resIndEach0, "_", typeEach, ".png"),
-            height = 720, width = 960, res = 214)
+        png(
+          paste0(dirSave, target, "_", resIndEach0, "_", typeEach, ".png"),
+          height = 720,
+          width = 960,
+          res = 214
+        )
       }
       print(g)
       dev.off()
     }
-    
+
     if (length(pathList) > 1) {
       # calculating the proportion that LP exceed GS
       pattern <- paste0(typeFactor, "_", corFactor)
       patternDf <- paste0(resDfEach$Type, "_", resDfEach$Factor)
       propList <- lapply(pattern, function(patternEach) {
         # patternEach <- pattern[1]
-        newMethodVal <- resDfEach[(resDfEach$Method == "CPSMT" & patternDf == patternEach), "Value"]
-        oldMethodVal <- resDfEach[(resDfEach$Method == "PCS" & patternDf == patternEach), "Value"]
+        newMethodVal <- resDfEach[
+          (resDfEach$Method == "CPSMT" & patternDf == patternEach),
+          "Value"
+        ]
+        oldMethodVal <- resDfEach[
+          (resDfEach$Method == "PCS" & patternDf == patternEach),
+          "Value"
+        ]
         proportion <- newMethodVal / oldMethodVal
         return(proportion)
       })
       propMat <- do.call(rbind, propList)
       rownames(propMat) <- pattern
       write.csv(propMat, paste0(dirSave, target, "_", resIndEach0, "_Prop.csv"))
-      
+
       # compute remained gentic variance
       if (grepl("geneticVar", resIndEach0)) {
-        varInit <- resDfEach[(resDfEach$Method == "PCS" & resDfEach$Generation == 0), ]
-        varFinalCpsmt <- resDfEach[(resDfEach$Method == "CPSMT" & resDfEach$Generation == 20), ]
-        varFinalPcs <- resDfEach[(resDfEach$Method == "PCS" & resDfEach$Generation == 20), ]
-        
+        varInit <- resDfEach[
+          (resDfEach$Method == "PCS" & resDfEach$Generation == 0),
+        ]
+        varFinalCpsmt <- resDfEach[
+          (resDfEach$Method == "CPSMT" & resDfEach$Generation == 20),
+        ]
+        varFinalPcs <- resDfEach[
+          (resDfEach$Method == "PCS" & resDfEach$Generation == 20),
+        ]
+
         patternInit <- paste0(varInit$Type, "_", varInit$Factor)
         patternCpsmt <- paste0(varFinalCpsmt$Type, "_", varFinalCpsmt$Factor)
         patternPcs <- paste0(varFinalPcs$Type, "_", varFinalPcs$Factor)
-        
+
         if (all(c(patternInit == patternCpsmt, patternInit == patternPcs))) {
           varRemainedCpsmt <- varFinalCpsmt[, "Value"] / varInit[, "Value"]
           varRemainedPcs <- varFinalPcs[, "Value"] / varInit[, "Value"]
-          cat(paste0("CPSMT remained ", resIndEach0, " = ", mean(varRemainedCpsmt)*100, " %\n"))
-          cat(paste0("PCS remained ", resIndEach0, " = ", mean(varRemainedPcs)*100, " %\n"))
+          cat(paste0(
+            "CPSMT remained ",
+            resIndEach0,
+            " = ",
+            mean(varRemainedCpsmt) * 100,
+            " %\n"
+          ))
+          cat(paste0(
+            "PCS remained ",
+            resIndEach0,
+            " = ",
+            mean(varRemainedPcs) * 100,
+            " %\n"
+          ))
         }
       }
       # compute prediction accuracy of the final generation
       if (grepl("accuracy", resIndEach0)) {
-        accFinalCpsmt <- resDfEach[(resDfEach$Method == "CPSMT" & resDfEach$Generation == 20), ]
-        accFinalPcs <- resDfEach[(resDfEach$Method == "PCS" & resDfEach$Generation == 20), ]
-        
-        accFinalSelCpsmt <- accFinalCpsmt[accFinalCpsmt$Factor != "NonLinear1_2", "Value"]
-        accFinalSelPcs <- accFinalPcs[accFinalPcs$Factor != "NonLinear1_2", "Value"]
-        
-        cat(paste0("CPSMT Pred ", resIndEach0, " of 5 Scenarios in Final = ", mean(accFinalSelCpsmt), " %\n"))
-        cat(paste0("PCS Pred ", resIndEach0, " of 5 Scenarios in Final = ", mean(accFinalSelPcs), " %\n"))  
+        accFinalCpsmt <- resDfEach[
+          (resDfEach$Method == "CPSMT" & resDfEach$Generation == 20),
+        ]
+        accFinalPcs <- resDfEach[
+          (resDfEach$Method == "PCS" & resDfEach$Generation == 20),
+        ]
+
+        excludeFactors <- c("NonLinear1_2", "Positive")
+        accFinalSelCpsmt <- accFinalCpsmt[
+          !(accFinalCpsmt$Factor %in% excludeFactors),
+          "Value"
+        ]
+        accFinalSelPcs <- accFinalPcs[
+          !(accFinalPcs$Factor %in% excludeFactors),
+          "Value"
+        ]
+
+        cat(paste0(
+          "CPSMT Pred ",
+          resIndEach0,
+          " of 3 Scenarios in Final = ",
+          round(mean(accFinalSelCpsmt), 3),
+          "\n"
+        ))
+        cat(paste0(
+          "PCS Pred ",
+          resIndEach0,
+          " of 3 Scenarios in Final = ",
+          round(mean(accFinalSelPcs), 3),
+          "\n"
+        ))
       }
     }
   }
+}
+
+# Monte Carlo evaluation of penalized cross/self potential
+EvalByMC <- function(
+  meanMat,
+  varMat,
+  w,
+  l,
+  h,
+  prob,
+  nMC,
+  meanPredU,
+  sdPredU,
+  hardConstraint = FALSE
+) {
+  z <- matrix(rnorm(nMC * 2), nrow = nMC, ncol = 2)
+  mcResult <- sapply(1:nrow(meanMat), function(j) {
+    muEach <- meanMat[j, ]
+    sigmaMat_j <- matrix(
+      c(varMat[j, 1], varMat[j, 3], varMat[j, 3], varMat[j, 2]),
+      nrow = 2
+    )
+
+    # if variance is nearly zero, return penalized mean directly
+    if (sigmaMat_j[1, 1] < 1e-6 & sigmaMat_j[2, 2] < 1e-6) {
+      inRange <- muEach[2] >= l & muEach[2] <= h
+      if (hardConstraint) {
+        if (!inRange) {
+          return(-10000)
+        }
+        return((muEach[1] - meanPredU[1]) / sdPredU[1])
+      }
+      penalty <- ifelse(
+        inRange,
+        0,
+        max((muEach[2] - h) / sdPredU[2], (l - muEach[2]) / sdPredU[2])
+      )
+      return(w * (muEach[1] - meanPredU[1]) / sdPredU[1] - (1 - w) * penalty)
+    }
+
+    # ensure positive definiteness
+    sigmaMat_j[1, 1] <- max(sigmaMat_j[1, 1], 1e-6)
+    sigmaMat_j[2, 2] <- max(sigmaMat_j[2, 2], 1e-6)
+    maxCov <- sqrt(sigmaMat_j[1, 1] * sigmaMat_j[2, 2]) * (1 - 1e-6)
+    sigmaMat_j[1, 2] <- max(min(sigmaMat_j[1, 2], maxCov), -maxCov)
+    sigmaMat_j[2, 1] <- sigmaMat_j[1, 2]
+
+    L <- chol(sigmaMat_j)
+    x <- z %*% L
+    x[, 1] <- x[, 1] + muEach[1]
+    x[, 2] <- x[, 2] + muEach[2]
+
+    if (hardConstraint) {
+      inRange <- x[, 2] >= l & x[, 2] <= h
+      x1hard <- ifelse(inRange, x[, 1], -10000)
+      threshold <- quantile(x1hard, probs = prob)
+      return(min(x1hard[x1hard >= threshold]))
+    }
+
+    penalty <- ifelse(
+      x[, 2] >= l & x[, 2] <= h,
+      0,
+      pmax((x[, 2] - h) / sdPredU[2], (l - x[, 2]) / sdPredU[2])
+    )
+    penalizedVal <- w * (x[, 1] - meanPredU[1]) / sdPredU[1] - (1 - w) * penalty
+    threshold <- quantile(penalizedVal, probs = prob)
+    min(penalizedVal[penalizedVal >= threshold])
+  })
+  names(mcResult) <- rownames(meanMat)
+  return(mcResult)
 }
