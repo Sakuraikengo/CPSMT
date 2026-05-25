@@ -294,12 +294,13 @@ for (wIdx in 1:nrow(wCombMat)) {
               meanMat = predProgMean,
               varMat = sigmaMat,
               w = w,
-              l = l,
-              h = h,
+              lVec = l,
+              hVec = h,
               prob = probCross,
               nMC = nMCCross,
               meanPredU = meanPredU,
-              sdPredU = sdPredU
+              sdPredU = sdPredU,
+              nTrait = nTrait
             )
             predProgMat <- matrix(mcResult, ncol = 1)
             rownames(predProgMat) <- rownames(predProgMean)
@@ -545,12 +546,13 @@ for (wIdx in 1:nrow(wCombMat)) {
                 meanMat = predProgMean,
                 varMat = sigmaMat,
                 w = w,
-                l = l,
-                h = h,
+                lVec = l,
+                hVec = h,
                 prob = probCross,
                 nMC = nMCCross,
                 meanPredU = meanPredU,
-                sdPredU = sdPredU
+                sdPredU = sdPredU,
+                nTrait = nTrait
               )
               predProgMat <- matrix(mcResult, ncol = 1)
               rownames(predProgMat) <- rownames(predProgMean)
@@ -593,12 +595,13 @@ for (wIdx in 1:nrow(wCombMat)) {
                   meanMat = predU,
                   varMat = varSelfMat,
                   w = w,
-                  l = l,
-                  h = h,
+                  lVec = l,
+                  hVec = h,
                   prob = probSelf,
                   nMC = nMCSelf,
                   meanPredU = meanPredU,
                   sdPredU = sdPredU,
+                  nTrait = nTrait,
                   hardConstraint = TRUE
                 )
                 selectedInd <- order(mcSelfResult, decreasing = T)[1:nSelf]
